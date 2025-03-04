@@ -20,6 +20,7 @@ export default function NewMeetingPage() {
   const audioChunks = useRef<Blob[]>([]);
   const router = useRouter();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0); // NEW: Upload Progress
 
   useEffect(() => {
     if (recording) {
@@ -61,9 +62,26 @@ export default function NewMeetingPage() {
 
   const uploadAudioToSupabase = async (audioBlob: Blob) => {
     const fileName = `${Date.now()}-${meetingName.replace(/\s+/g, "_")}.wav`;
+    setUploadProgress(0); // Reset progress
+    const totalSize = audioBlob.size;
+    let uploadedSize = 0;
+    const reader = audioBlob.stream().getReader();
+    const chunks: Uint8Array[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      uploadedSize += value.length;
+
+      // Update progress
+      setUploadProgress(Math.round((uploadedSize / totalSize) * 100));
+    }
+
     const { data, error } = await supabase.storage
       .from("meeting-recordings")
-      .upload(fileName, audioBlob, { contentType: "audio/wav" });
+      .upload(fileName, new Blob(chunks), { contentType: "audio/wav" });
+    setUploadProgress(100); // Ensure progress is complete
 
     if (error) {
       console.error("Error uploading file to Supabase:", error);
@@ -132,6 +150,21 @@ export default function NewMeetingPage() {
           <div className="mt-4 text-gray-600">
             Recording Time: {recordingTime} sec | File Size:{" "}
             {(fileSize / 1024).toFixed(2)} KB
+          </div>
+        )}
+
+        {/* Progress Bar */}
+        {uploadProgress > 0 && (
+          <div className="mt-4">
+            <p className="text-sm text-gray-600">
+              Uploading: {uploadProgress}%
+            </p>
+            <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
           </div>
         )}
       </div>
